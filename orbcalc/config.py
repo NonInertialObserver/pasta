@@ -1,0 +1,196 @@
+# -*- coding: utf-8 -*-
+"""
+TrajConfig — 轨迹优化任务的完整配置 (JSON 可序列化, spawn 可 pickle)。
+
+默认值逐项对齐 temp/EVVEJU_TOF_1DSM_mp.py 的当前常量, 保证与 CLI 脚本数值等价。
+"""
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import dataclass, field, asdict
+
+# ---------------------------------------------------------------------------
+# 默认常量 (与 mp 脚本一致)
+# ---------------------------------------------------------------------------
+DEFAULT_SEQ = ["EARTH", "VENUS", "VENUS", "EARTH", "JUPITER", "URANUS"]
+
+DEFAULT_TOF_BOUNDS = [
+    [190.0, 200.0],     # Earth  -> Venus1 (Cassini ~197 d)
+    [300.0, 500.0],     # Venus1 -> Venus2 (Cassini ~397 d)
+    [10.0, 90.0],       # Venus2 -> Earth2 (Cassini ~50 d)
+    [400.0, 1100.0],    # Earth2 -> Jupiter (收紧上界)
+    [1200.0, 4500.0],   # Jupiter-> Uranus
+]
+DEFAULT_VINF_BOUNDS_KMPS = [3.5, 6.0]
+DEFAULT_ETA_BOUNDS = [0.01, 0.9]
+DEFAULT_RP_UB = 30.0
+
+DEFAULT_DSM_LIMIT = 750.0                    # m/s (硬核验阈值)
+DEFAULT_PENALTY = [10.0, 0.2]                # 默认 DSM 越界罚 (线性, 二次)
+DEFAULT_FRONTIER_PENALTY = [30.0, 2.0]       # 前沿阶段更强罚
+DEFAULT_WL, DEFAULT_VLF = 2e-5, 5000.0       # 发射 v∞ 超 5.0 km/s 罚 (m/s)
+DEFAULT_WA, DEFAULT_VAF = 2e-5, 9000.0       # 到达 v∞ 超 9.0 km/s 罚 (m/s)
+
+# 发射窗口时代 (与 mp 脚本一致)
+DEFAULT_ERAS = [
+    ["2029-01-01", "2033-06-30"],   # UOP (原 "uop")
+    ["2017-01-01", "2021-01-01"],   # Cassini (原 "cassini")
+]
+DEFAULT_ERA_STEP_D = 60.0           # None → smoke?90 : 60 (与脚本一致)
+
+# 内置热启动 (2026-08 已知最优: TOF=9.86 yr, DSM=750.0 m/s, 金星≥200km)
+#   [t0, u, v, Vinf, eta1, T1, beta, rp, eta2, T2, beta, rp, eta3, T3,
+#    beta, rp, eta4, T4, beta, rp, eta5, T5]
+DEFAULT_WARM_X = [
+    6790.673916, 0.741830, 0.596849, 4577.372480, 0.012963, 199.956541,
+    -1.841368, 1.788768, 0.406503, 397.483336, -1.430037, 1.078390,
+    0.180811, 58.108399, -1.201086, 2.544347, 0.605277, 643.699581,
+    4.722208, 6.692400, 0.010289, 2303.322223,
+]
+
+# 行星安全半径覆盖 (m); 缺省看 planets.DEFAULT_SAFE_RADIUS
+DEFAULT_SAFE_RADIUS = None           # 键: 行星 TAG -> 半径 m
+
+
+@dataclass
+class TrajConfig:
+    # --- 基本 ---
+    name: str = "EVVEJU"
+    seq: list = field(default_factory=lambda: list(DEFAULT_SEQ))
+
+    # --- 约束/边界 ---
+    safe_radius: dict = field(default_factory=dict)   # TAG -> 半径 m (覆盖默认)
+    tof_bounds: list = field(default_factory=lambda: [list(b) for b in DEFAULT_TOF_BOUNDS])
+    vinf_bounds_kmps: list = field(default_factory=lambda: list(DEFAULT_VINF_BOUNDS_KMPS))
+    eta_bounds: list = field(default_factory=lambda: list(DEFAULT_ETA_BOUNDS))
+    rp_ub: float = DEFAULT_RP_UB    # 全局飞掠 rp 上界 (pykep mga_1dsm 仅支持标量)
+
+    # --- 目标与罚函数 ---
+    objective: str = "min_tof"        # "min_tof" | "min_dsm" | "custom"
+    objective_weights: list = field(default_factory=lambda: [1.0, 0.0])  # custom: [TOF, DSM] 权重
+    dsm_limit_ms: float = DEFAULT_DSM_LIMIT
+    penalty: list = field(default_factory=lambda: list(DEFAULT_PENALTY))
+    frontier_penalty: list = field(default_factory=lambda: list(DEFAULT_FRONTIER_PENALTY))
+    wl: float = DEFAULT_WL
+    vinf_launch_limit_ms: float = DEFAULT_VLF
+    wa: float = DEFAULT_WA
+    vinf_arrival_limit_ms: float = DEFAULT_VAF
+
+    # --- 发射窗口时代 ---
+    eras: list = field(default_factory=lambda: [list(e) for e in DEFAULT_ERAS])
+    era_step_d: float | None = None   # None → smoke?90:60 (与脚本一致)
+
+    # --- 并行 / 模式 ---
+    jobs: int = 8
+    smoke: bool = False
+    scan_keep: int = 8    # 扫描阶段保留的窗口数 (与脚本硬编码 8 一致)
+    refine_keep: int = 6  # 细化阶段处理的候选窗口数 (与脚本硬编码 6 一致)
+    warm_x: list | None = field(default_factory=lambda: list(DEFAULT_WARM_X))
+    run_scan: bool = True             # [1] 窗口粗扫 (含 [2] 细化, 与脚本耦合)
+    run_seed: bool = True             # [3] 弹道播种 (smoke 时脚本自动跳过)
+    run_compress: bool = True         # [4] 宽 J->U 压缩
+    run_frontier: bool = True         # [5] 紧 J->U 前沿压缩
+
+    # ------------------------------------------------------------------
+    def validate(self):
+        n_legs = len(self.seq) - 1
+        if n_legs < 1:
+            raise ValueError("seq 至少需要 2 个天体")
+        if len(self.tof_bounds) != n_legs:
+            raise ValueError(f"tof_bounds 应有 {n_legs} 条腿, 实际 {len(self.tof_bounds)}")
+        if self.jobs < 1:
+            raise ValueError("jobs >= 1")
+        if self.objective not in ("min_tof", "min_dsm", "custom"):
+            raise ValueError(f"objective 应为 min_tof/min_dsm/custom, 实际 {self.objective}")
+        if self.objective == "custom" and len(self.objective_weights) != 2:
+            raise ValueError(f"objective_weights 应为 [TOF权重, DSM权重], 实际 {self.objective_weights}")
+        if self.scan_keep < 1 or self.refine_keep < 1:
+            raise ValueError("scan_keep / refine_keep >= 1")
+        if self.era_step_d is not None and self.era_step_d < 1:
+            raise ValueError("era_step_d (搜索步进) >= 1 天")
+        for e in self.eras:
+            if len(e) != 2 or not e[0] or not e[1]:
+                raise ValueError(f"era 应为 [start, end], 实际 {e}")
+        # direct 编码: 4 (发射) + 2n (每腿 eta,T) + 2(n-1) (每飞掠 beta,rp) = 4n+2
+        if self.warm_x is not None and len(self.warm_x) != 4 * n_legs + 2:
+            raise ValueError(
+                f"warm_x 长度应为 {4 * n_legs + 2} ({n_legs} 腿 direct 编码), 实际 {len(self.warm_x)}")
+        return True
+
+    # ------------------------------------------------------------------
+    def to_dict(self):
+        d = asdict(self)
+        return d
+
+    @classmethod
+    def from_dict(cls, d):
+        known = {f.name for f in cls.__dataclass_fields__.values()}
+        kw = {k: v for k, v in d.items() if k in known}
+        cfg = cls(**kw)
+        cfg.validate()
+        return cfg
+
+    def to_json(self, path=None, indent=2):
+        txt = json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
+        if path:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(txt)
+        return txt
+
+    @classmethod
+    def from_json(cls, path=None, text=None):
+        if text is None:
+            with open(path, "r", encoding="utf-8") as f:
+                text = f.read()
+        return cls.from_dict(json.loads(text))
+
+    def era_mjd(self):
+        """时代窗口 (MJD2000 对) — 供 stages 使用."""
+        import pykep as pk
+        return [[pk.epoch(s).mjd2000, pk.epoch(e).mjd2000] for s, e in self.eras]
+
+
+def sanitize_name(name):
+    """任务名 -> 安全目录名."""
+    s = re.sub(r"[^\w\-]+", "_", name).strip("_") or "job"
+    return s[:40]
+
+
+# ---------------------------------------------------------------------------
+# 预设
+# ---------------------------------------------------------------------------
+def preset_evveju_cassini():
+    return TrajConfig(name="EVVEJU Cassini-like")
+
+
+def preset_evveju_cold():
+    cfg = TrajConfig(name="EVVEJU cold")
+    cfg.warm_x = None
+    return cfg
+
+
+def preset_evveju_uop():
+    """只扫 UOP 时代 (2029-2033) 的 EVVEJU."""
+    cfg = TrajConfig(name="EVVEJU UOP-era")
+    cfg.eras = [["2029-01-01", "2033-06-30"]]
+    return cfg
+
+
+def preset_evveju_evaluate():
+    """只评估内置最优解 (无扫描/压缩, 任务秒级): 快速验证环境与出图."""
+    cfg = TrajConfig(name="EVVEJU evaluate WARM")
+    cfg.eras = [["2029-01-01", "2033-06-30"]]
+    cfg.run_scan = False
+    cfg.run_seed = False
+    cfg.run_compress = False
+    cfg.run_frontier = False
+    return cfg
+
+
+PRESETS = {
+    "EVVEJU Cassini-like (默认, 含热启动)": preset_evveju_cassini,
+    "EVVEJU cold (无热启动, 从零扫)": preset_evveju_cold,
+    "EVVEJU UOP era (2029-2033)": preset_evveju_uop,
+    "EVVEJU 仅评估 WARM 解 (秒级)": preset_evveju_evaluate,
+}

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>orbitcalculator · 轨道弹弓优化</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <h1>🌍 orbitcalculator — 弹弓轨道配置与可视化</h1>
+  <div class="sub">配置即脚本 · 一个页面完成"配置 → 计算 → 3D 可视化"</div>
+  <div id="closeHint" class="banner hint hidden">关闭本标签页 = 后端后台继续运行；要停止后端请点右上角「⏹ 终止程序」。</div>
+  <div class="header-actions">
+    <span id="sysInfo" class="sys-info"></span>
+    <button id="sysOpen" class="ghost">⚙ 系统设置</button>
+    <button id="shutdownBtn" class="ghost danger">⏹ 终止程序</button>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ================= 左: 可折叠任务边栏 ================= -->
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-head">
+      <h2>任务</h2>
+      <button id="sidebarToggle" title="折叠/展开任务边栏">«</button>
+    </div>
+    <div id="jobList" class="job-list"></div>
+    <div class="actions"><button id="refreshJobs" class="ghost">刷新任务列表</button></div>
+  </aside>
+
+  <!-- ================= 中: 配置面板 ================= -->
+  <section class="panel config">
+    <h2>任务配置</h2>
+
+    <!-- 任务名 单独一行 (不属于任何子块) -->
+    <div class="field wide"><label>任务名</label><input id="cfgName" class="wide" value="EVVEJU Cassini-like"></div>
+
+    <!-- ===== 子块 1: 任务序列配置 (可折叠) ===== -->
+    <details class="main-panel" open>
+      <summary>📋 任务序列配置</summary>
+      <div class="preset-inline">
+        <label>任务预设</label>
+        <select id="presetSelect" class="wide"></select>
+        <button id="presetLoad" class="ghost">载入</button>
+        <button id="presetSave" class="ghost">存为任务预设</button>
+      </div>
+      <fieldset>
+        <legend>行星序列 (节点编辑器)</legend>
+        <div id="seqNodes" class="seq-nodes"></div>
+        <div class="actions"><button id="nodeAdd" class="ghost">+ 添加节点 (插到到达前)</button></div>
+        <p class="hint">出发 → 飞掠(×N) → 到达。可增删、上下移、切换行星；rp 上界统一由「飞掠 rp 全局上界」控制（pykep 标量约束），判定阈值与安全半径依赖所选行星。</p>
+      </fieldset>
+      <fieldset>
+        <legend>每腿 TOF 边界 (天)</legend>
+        <div id="tofTable"></div>
+      </fieldset>
+      <fieldset>
+        <legend>目标与约束</legend>
+        <div class="field"><label>目标</label>
+          <select id="cfgObjective" class="wide">
+            <option value="min_tof">最短飞行时间 (min TOF)</option>
+            <option value="min_dsm">最小总 DSM (min DSM)</option>
+            <option value="custom">自定义 (权重 + 惩罚系数)</option>
+          </select>
+        </div>
+        <div id="customWrap" class="checks hidden">
+          <label>TOF 权重 <input id="cfgWToF" type="number" value="1" step="0.1" min="0"></label>
+          <label>DSM 权重 <input id="cfgWDsm" type="number" value="0" step="0.1" min="0"></label>
+          <label>L1 惩罚系数 <input id="cfgPenL1" type="number" value="10" step="1" min="0"></label>
+          <label>L2 惩罚系数 <input id="cfgPenL2" type="number" value="0.2" step="0.1" min="0"></label>
+        </div>
+        <div class="field"><label>DSM 上限 (m/s)</label><input id="cfgDsmLimit" type="number" value="750" step="10"></div>
+        <div class="field"><label>发射 v∞ (km/s)</label>
+          <input id="cfgVinfL" type="number" value="3.5" step="0.1"> ~
+          <input id="cfgVinfH" type="number" value="6.0" step="0.1"></div>
+        <div class="field"><label>eta 范围</label>
+          <input id="cfgEtaL" type="number" value="0.01" step="0.01"> ~
+          <input id="cfgEtaH" type="number" value="0.9" step="0.01"></div>
+        <div class="field"><label>飞掠 rp 全局上界 (×R)</label><input id="cfgRpUb" type="number" value="30" step="1"></div>
+        <div class="field"><label>前沿罚系数 (L1/L2)</label>
+          <input id="cfgFPenL1" type="number" value="30" step="1" min="0"> ~
+          <input id="cfgFPenL2" type="number" value="2" step="0.1" min="0"></div>
+      </fieldset>
+      <fieldset>
+        <legend>发射窗口 (era)</legend>
+        <div id="eraTable"></div>
+        <button id="eraAdd" class="ghost">+ 窗口</button>
+      </fieldset>
+    </details>
+
+    <!-- ===== 子块 2: 计算配置 (可折叠) ===== -->
+    <details class="main-panel" open>
+      <summary>⚙ 计算配置</summary>
+      <div class="preset-inline">
+        <label>计算预设</label>
+        <select id="compPresetSelect" class="wide"></select>
+        <button id="compPresetLoad" class="ghost">载入</button>
+        <button id="compPresetSave" class="ghost">存为计算预设</button>
+      </div>
+      <fieldset>
+        <legend>流水线与模式</legend>
+        <div class="checks">
+          <label><input type="checkbox" id="cfgRunScan" checked> 扫描+细化</label>
+          <label><input type="checkbox" id="cfgRunSeed" checked> 弹道播种</label>
+          <label><input type="checkbox" id="cfgRunCompress" checked> 宽压缩</label>
+          <label><input type="checkbox" id="cfgRunFrontier" checked> 前沿压缩</label>
+          <label><input type="checkbox" id="cfgSmoke"> 冒烟 (快速) 模式</label>
+          <label><input type="checkbox" id="cfgWarm" checked> 内置热启动 (WARM_X)</label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>并行与搜索</legend>
+        <div class="field"><label>并行进程 jobs</label><input id="cfgJobs" type="number" value="8" min="1" max="64"></div>
+        <div class="field"><label>搜索步进 (天)</label><input id="cfgEraStep" type="number" value="60" min="1" max="365"></div>
+        <div class="field"><label>扫描保留窗口数</label><input id="cfgScanKeep" type="number" value="8" min="1" max="40"></div>
+        <div class="field"><label>细化保留窗口数</label><input id="cfgRefineKeep" type="number" value="6" min="1" max="20"></div>
+      </fieldset>
+    </details>
+
+    <div class="actions center">
+      <button id="runBtn" class="primary actions-run">▶ 提交计算</button>
+    </div>
+    <div class="actions">
+      <button id="saveCfg" class="ghost">保存配置 JSON</button>
+    </div>
+    <textarea id="cfgJsonBox" rows="7" readonly placeholder="配置 JSON 预览…"></textarea>
+  </section>
+
+  <!-- ================= 右: 日志 / 结果 双 tab ================= -->
+  <section class="panel right">
+    <div class="tabs">
+      <button id="tabLog" class="tab active">📜 日志</button>
+      <button id="tabResult" class="tab">📊 结果</button>
+    </div>
+
+    <div id="paneLog" class="pane active">
+      <pre id="logBox">（提交任务后显示）</pre>
+      <div class="actions"><button id="logDown" class="ghost">下载 log.txt</button></div>
+    </div>
+
+    <div id="paneResult" class="pane">
+      <div class="res-grid">
+        <div id="summaryCards" class="cards"></div>
+      </div>
+      <div id="legTable"></div>
+      <div id="flybyTable"></div>
+      <div id="chart" style="height:520px"></div>
+      <div class="actions">
+        <button id="pngDown" class="ghost">下载 PNG</button>
+        <button id="jsonDown" class="ghost">下载 result.json</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- 系统设置弹窗 -->
+<div id="sysModal" class="modal hidden">
+  <div class="modal-box">
+    <h3>系统设置 (重启后生效)</h3>
+    <div id="sysLanWarnBanner" class="banner warn hidden">⚠ 监听 0.0.0.0：局域网内任何设备可访问且本工具无鉴权 — 仅限安全内网使用！</div>
+    <div class="checks">
+      <label><input type="checkbox" id="sysLan"> 开放到局域网 (监听 0.0.0.0)</label>
+      <p class="hint">选此项后 127.0.0.1 不再可用，任何局域网设备都能访问本页面。保存时会再次提示风险。</p>
+    </div>
+    <div class="field"><label>端口 port</label><input id="sysPort" type="number" value="8765" min="0" max="65535"></div>
+    <div class="checks">
+      <label><input type="checkbox" id="sysSingle"> 单实例 (端口被占时直接打开已有实例)</label><br>
+      <label><input type="checkbox" id="sysOpenBrowser"> 启动时自动打开浏览器</label>
+    </div>
+    <p class="hint">port=0 表示随机空闲端口 (禁用单实例)。改动保存后需重启程序生效。</p>
+    <div class="actions">
+      <button id="sysSave" class="primary">保存</button>
+      <button id="sysClose" class="ghost">取消</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/plotly.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
