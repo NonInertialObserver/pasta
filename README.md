@@ -9,4 +9,5 @@
 **license: GNU GPL v3**
 
 This project is licensed under the [GPL-3.0 License](https://www.gnu.org/licenses/gpl-3.0.txt)
+
 ![GPLv3-logo](https://www.gnu.org/graphics/gplv3-with-text-136x68.png)
