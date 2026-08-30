@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
 import os
 import sys
 import time
@@ -148,6 +149,14 @@ def run(args):
         _write_result(args, summary, logf)
         return 2
     finally:
+        # 兜底: 异常/退出时释放所有 multiprocessing 子进程 (防孤儿池 worker)。
+        # 正常完成时池已由 with 回收, active_children 为空 -> 无操作;
+        # 池 broken / 阶段崩溃时残留 worker 在这里被终止。
+        try:
+            for _ch in multiprocessing.active_children():
+                _ch.terminate()
+        except Exception:
+            pass
         logf.close()
 
 

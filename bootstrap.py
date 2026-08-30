@@ -3,6 +3,8 @@ import sys
 
 import _version
 
+check_vc = False
+
 def is_vc_runtime_installed():
     r"""
     检测 VC++ 2015-2022 Redistributable 是否已安装
@@ -17,25 +19,25 @@ def is_vc_runtime_installed():
 
 print("loading...")
 
-installed = is_vc_runtime_installed()
-
-if installed:
-    print(f"Visual C++ Redistributable detected")
-else:
-    print(f"Visual C++ Redistributable not installed")
-    # print(f"{info}")
-    print()
-    print("Please install VC++ Redistributable from the link below:")
-    print("请从以下链接下载并安装 VC++ Redistributable:")
-    print("https://aka.ms/vs/17/release/vc_redist.x64.exe")
-    print()
-    print("Restart the program after vc_redist installed.")
-    print("安装完成后请重新运行本程序。")
-    print("Enter以退出...")
-    # try:
-    #     import webbrowser
-    #     webbrowser.open("https://aka.ms/vs/17/release/vc_redist.x64.exe")
-    # except Exception:
-    #     pass
-    input()
-    sys.exit(1)
+if check_vc:
+    installed = is_vc_runtime_installed()
+    if installed:
+        print(f"Visual C++ Redistributable detected")
+    else:
+        print(f"Visual C++ Redistributable not installed")
+        # print(f"{info}")
+        print()
+        print("Please install VC++ Redistributable from the link below:")
+        print("请从以下链接下载并安装 VC++ Redistributable:")
+        print("https://aka.ms/vs/17/release/vc_redist.x64.exe")
+        print()
+        print("Restart the program after vc_redist installed.")
+        print("安装完成后请重新运行本程序。")
+        print("Enter以退出...")
+        # try:
+        #     import webbrowser
+        #     webbrowser.open("https://aka.ms/vs/17/release/vc_redist.x64.exe")
+        # except Exception:
+        #     pass
+        input()
+        sys.exit(1)

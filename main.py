@@ -19,11 +19,13 @@ orbitcalculator 启动器:
     --port 0  -> 随机选空闲端口 (禁用单实例锁语义)
     其他      -> 固定该端口; 被占用时若 single_instance 则直接打开已有实例
 """
+from _version import __version__
 
 import bootstrap
 
 import argparse
 import json
+import multiprocessing
 import os
 import socket
 import sys
@@ -79,8 +81,10 @@ def _write_lock(host: str, port: int) -> Path:
 
 
 def main():
-    # PyInstaller 冻结版子进程模式: orbitcalculator.exe --cli --config ... --outdir ...
+    # PyInstaller 冻结版子进程模式: pasta.exe --cli --config ... --outdir ...
     if len(sys.argv) >= 2 and sys.argv[1] == "--cli":
+        # 剥掉 --cli 标记再交给 run_cli (它的 argparse 不认 --cli)
+        sys.argv = [sys.argv[0]] + (sys.argv[2:] if len(sys.argv) > 2 else [])
         from orbcalc.run_cli import main as cli_main
         sys.exit(cli_main())
 
@@ -161,4 +165,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # PyInstaller 冻结版必需: multiprocessing 池的 spawn 子进程以 pasta.exe 入口重新执行,
+    # 必须由 freeze_support() 拦截并转入 spawn_main, 否则 worker 会进主流程崩溃 (BrokenProcessPool)。
+    multiprocessing.freeze_support()
     main()

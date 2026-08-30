@@ -61,12 +61,13 @@ datas += [
 # 运行时目录: 冻结版 exe 首次启动时自动创建 (JobManager/预设),
 # 但 onedir 下用户数据目录建议留在 exe 旁边, 不在包内。
 
-# ---- VC runtime:目标机没装 VC++ Redistributable 时需要;装了可删整段 ----
-# sys32 = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32')
-# for _dll in ('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll'):
-#     _p = os.path.join(sys32, _dll)
-#     if os.path.exists(_p):
-#         binaries.append((_p, '.'))
+# ---- VC runtime: 打进 _internal 顶层, 目标机无需安装 VC++ Redistributable ----
+# (pykep/pygmo 是 C++ 扩展, 依赖 msvcp140.dll; 只放系统目录会导致未装 redist 的机器加载失败)
+sys32 = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32')
+for _dll in ('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll'):
+    _p = os.path.join(sys32, _dll)
+    if os.path.exists(_p):
+        binaries.append((_p, '.'))
 #datas = [i for i in datas if os.path.exists(i)]
 a = Analysis(
     ['main.py'],
