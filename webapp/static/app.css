@@ -86,6 +86,8 @@ legend { font-size: 12px; color: var(--dim); }
 .preset-inline select { flex: 1; min-width: 120px; background: #0c121f; color: var(--txt);
                         border: 1px solid var(--line); border-radius: 6px;
                         padding: 5px 8px; font-size: 13px; }
+.preset-msg { font-size: 11px; color: var(--dim); margin: 2px 0 6px;
+              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- 任务配置两大子块 (可折叠) ---------- */
 details.main-panel { border: 1px solid var(--line); border-radius: 10px; margin: 10px 0;

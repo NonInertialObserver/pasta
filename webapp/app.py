@@ -319,7 +319,7 @@ class JobManager:
 
 # 预设字段分组: 任务配置 (轨迹) / 计算配置 (流水线)
 TRAJ_FIELDS = {"name", "seq", "safe_radius", "tof_bounds", "vinf_bounds_kmps",
-               "eta_bounds", "rp_ub", "eras", "era_step_d", "objective",
+               "eta_bounds", "rp_ub", "eras", "objective",
                "objective_weights", "dsm_limit_ms", "penalty", "frontier_penalty",
                "wl", "vinf_launch_limit_ms", "wa", "vinf_arrival_limit_ms", "warm_x"}
 COMP_FIELDS = {"name", "run_scan", "run_seed", "run_compress", "run_frontier",

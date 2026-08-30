@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 r"""
-PyInstaller spec — 打包 pykep(及 pygmo)Windows 应用。
+PyInstaller spec — 打包 PASTA (Parallel Astrodynamic Solver for Trajectory Analysis) Windows 应用。
 
 用法(在装了 pykep/pygmo 的那个 venv 里):
     pip install pyinstaller
@@ -86,7 +86,7 @@ exe = EXE(
     pyz,
     a.scripts,
     exclude_binaries=True,          # onedir 模式(和当前 dist\test 布局一致)
-    name='orbitcalculator',
+    name='pasta',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -101,5 +101,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name='orbitcalculator',
+    name='pasta',
 )

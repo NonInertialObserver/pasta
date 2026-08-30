@@ -1,4 +1,4 @@
-// orbitcalculator Web 前端逻辑 (原生 JS, 无框架)
+// PASTA (Parallel Astrodynamic Solver for Trajectory Analysis) Web 前端逻辑 (原生 JS, 无框架)
 "use strict";
 
 /* ---------- 工具 ---------- */
@@ -86,6 +86,11 @@ function fillTrajForm(cfg) {
   buildSeqEditor(cfg.seq || ["EARTH", "VENUS", "VENUS", "EARTH", "JUPITER", "URANUS"]);
   buildEraTable(cfg.eras);
   updateConfigJson();
+  // 载入反馈
+  $("trajPresetMsg").textContent =
+    `已载入任务预设「${cfg.name || "?"}」: ` +
+    `${(cfg.seq || []).join("→")} · 目标 ${cfg.objective || "min_tof"}` +
+    (cfg.warm_x ? " · 含热启动" : " · 无热启动");
 }
 
 function fillCompForm(cfg) {
@@ -99,6 +104,13 @@ function fillCompForm(cfg) {
   $("cfgRefineKeep").value = cfg.refine_keep || 6;
   $("cfgEraStep").value = cfg.era_step_d || 60;   // 搜索步进 (天)
   updateConfigJson();
+  // 载入反馈 (明确显示生效了什么)
+  $("compPresetMsg").textContent =
+    `已载入计算预设「${cfg.name || "?"}」: ` +
+    `scan=${cfg.run_scan !== false} seed=${cfg.run_seed !== false} ` +
+    `compress=${cfg.run_compress !== false} frontier=${cfg.run_frontier !== false} ` +
+    `smoke=${!!cfg.smoke} jobs=${cfg.jobs || 8} ` +
+    `步进=${cfg.era_step_d || 60}d keep=${cfg.scan_keep || 8}/${cfg.refine_keep || 6}`;
 }
 
 /* ---------- 序列节点编辑器 ---------- */
@@ -707,7 +719,8 @@ async function loadSysConfig() {
     $("sysPort").value = s.port;
     $("sysSingle").checked = !!s.single_instance;
     $("sysOpenBrowser").checked = !!s.open_browser;
-    $("sysLanWarnBanner").classList.toggle("hidden", !$("sysLan").checked);
+    const bw = $("sysLanWarnBanner");
+    if (bw) bw.classList.toggle("hidden", !$("sysLan").checked);
   } catch (e) { console.error(e); }
 }
 $("sysOpen").addEventListener("click", async () => {
@@ -754,9 +767,10 @@ $("sysSave").addEventListener("click", async () => {
     const h = await jfetch("/api/health");
     $("sysInfo").textContent = `${h.host || "127.0.0.1"}:${h.port || 8765}` +
       (h.single_instance ? " · 单实例" : " · 多实例");
-    if (h.lan) $("sysLanWarnBanner").classList.remove("hidden");
+    if (h.lan) { const b = $("sysLanWarnBanner"); if (b) b.classList.remove("hidden"); }
   } catch (e) { console.error(e); }
-  $("closeHint").classList.remove("hidden");   // 一次性提示: 关标签=后台继续
+  // 一次性提示: 关标签=后台继续 (可删, 不影响脚本)
+  { const ch = $("closeHint"); if (ch) ch.classList.remove("hidden"); }
   await loadPresets();
   await loadJobList();
 })();

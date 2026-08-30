@@ -31,9 +31,11 @@ else:
     print()
     print("Restart the program after vc_redist installed.")
     print("安装完成后请重新运行本程序。")
+    print("Enter以退出...")
     # try:
     #     import webbrowser
     #     webbrowser.open("https://aka.ms/vs/17/release/vc_redist.x64.exe")
     # except Exception:
     #     pass
+    input()
     sys.exit(1)
